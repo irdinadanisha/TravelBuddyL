@@ -1,0 +1,14 @@
+{
+  "snippets": [
+    {
+      "id": "manual_expats_in_france_1",
+      "kind": "manual",
+      "subreddit": "Expats_In_France",
+      "title": "https://www.reddit.com/r/Expats_In_France/",
+      "text": "Paste the Reddit post or comment text here. Example: people recommended a local market, cafe, restaurant, neighborhood, museum, park, or walking area in France.",
+      "permalink": "https://www.reddit.com/r/Expats_In_France/",
+      "score": 0,
+      "query": "manual expats in france recommendations"
+    }
+  ]
+}
