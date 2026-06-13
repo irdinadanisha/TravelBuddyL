@@ -6,6 +6,8 @@ from app.routers import (
     google_places,
     health,
     open_data,
+    osm_places,
+    osm_poi,
     reddit,
     sessions,
     travel,
@@ -30,5 +32,7 @@ app.include_router(travel.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(reddit.router, prefix="/api")
 app.include_router(google_places.router, prefix="/api")
+app.include_router(osm_places.router, prefix="/api")
+app.include_router(osm_poi.router, prefix="/api")
 app.include_router(open_data.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")

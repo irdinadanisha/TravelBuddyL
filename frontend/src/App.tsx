@@ -292,8 +292,9 @@ export default function App() {
                 </div>
               ))}
               {loading ? (
-                <div className="message assistant loading-line" aria-label="Planning">
+                <div className="message assistant loading-line">
                   <LoaderCircle size={16} className="spin" />
+                  Planning
                 </div>
               ) : null}
               <div ref={messagesEndRef} />
@@ -518,7 +519,7 @@ function EvidenceList({ evidence }: { evidence: ChatResponse["evidence"] }) {
     return (
       <div className="evidence-list">
         <p>
-          Evidence: refresh Reddit and Google Maps data to attach source links
+          Evidence: refresh Reddit and OpenStreetMap data to attach source links
           to each recommendation.
         </p>
       </div>
@@ -634,17 +635,17 @@ function SourceLine({
   const allowedSource =
     sourceType === "reddit" ||
     sourceType === "google_maps" ||
+    sourceType === "openstreetmap" ||
     sourceType === "official_open_data" ||
-    sourceType === "curated" ||
     sourceType === "curated_must_go";
   const label =
     stop.source_title ||
     (sourceType === "google_maps"
       ? "Google Maps reviews"
-      : sourceType === "official_open_data"
+      : sourceType === "openstreetmap"
+        ? "OpenStreetMap place details"
+        : sourceType === "official_open_data"
           ? "Official open-data record"
-          : sourceType === "curated"
-            ? "Curated TravelBuddy place reference"
           : sourceType === "curated_must_go"
             ? "Curated must-go France source"
         : "Reddit thread");
@@ -652,7 +653,7 @@ function SourceLine({
   if (!allowedSource) {
     return (
       <small className={`source-line missing ${compact ? "compact" : ""}`}>
-        Reference: refresh Google Maps or Reddit source
+        Reference: refresh OpenStreetMap or Reddit source
       </small>
     );
   }
@@ -678,13 +679,18 @@ function SourceLine({
 }
 
 function PlaceStatus({ stop, compact = false }: { stop: Place; compact?: boolean }) {
+  const mapSource = stop.map_source || sourceLabel(stop.source_type);
   const rating =
     stop.google_rating && stop.google_user_rating_count
       ? `${stop.google_rating.toFixed(1)} Google rating (${stop.google_user_rating_count} reviews)`
-      : "Rating: refresh Google Maps data";
+      : mapSource === "OpenStreetMap"
+        ? "Rating: not available from OpenStreetMap"
+        : "Rating: refresh map source";
   const price = stop.price_label || stop.google_price_label
     ? `Price: ${stop.price_label || stop.google_price_label}`
-    : "Price: refresh Google Maps data";
+    : mapSource === "OpenStreetMap"
+      ? "Price: not mapped in OpenStreetMap"
+      : "Price: refresh map source";
 
   return (
     <span className={`place-status ${compact ? "compact" : ""}`}>
@@ -697,8 +703,8 @@ function PlaceStatus({ stop, compact = false }: { stop: Place; compact?: boolean
 
 function sourceLabel(sourceType: string) {
   if (sourceType === "google_maps") return "Google Maps";
+  if (sourceType === "openstreetmap") return "OpenStreetMap";
   if (sourceType === "official_open_data") return "Official open data";
-  if (sourceType === "curated") return "Curated";
   if (sourceType === "curated_must_go") return "Curated must-go";
   if (sourceType === "reddit") return "Reddit";
   return "source";
