@@ -5,7 +5,11 @@ from uuid import uuid4
 
 from app.schemas.travel import ChatRequest, ChatResponse
 
-SESSION_DIR = Path(__file__).resolve().parents[1] / "data" / "sessions"
+import os
+
+SESSION_DIR = Path(
+    os.getenv("SESSION_DIR", "/tmp/travelbuddy-sessions")
+)
 
 
 def ensure_session_id(session_id: str = "") -> str:

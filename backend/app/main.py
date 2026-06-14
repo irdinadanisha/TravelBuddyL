@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from app.routers import (
     export,
@@ -19,8 +20,15 @@ app = FastAPI(
     description="AI travel buddy backend focused on local-style recommendations in France.",
 )
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1|\[::1\]):\d+$",
     allow_credentials=True,
     allow_methods=["*"],
