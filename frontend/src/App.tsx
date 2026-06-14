@@ -59,6 +59,8 @@ type SavedSession = {
   planAlts: AlternativePlace[];
 };
 
+type MobileTab = "Plan" | "Itinerary" | "Map" | "Route" | "Transit";
+
 function haversineKm(from: Place, to: Place) {
   const R = 6371;
   const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
@@ -323,6 +325,10 @@ export default function App() {
   const [draggingStop, setDraggingStop] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>(loadSessions);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("Plan");
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  );
   const feedRef = useRef<HTMLDivElement | null>(null);
 
   const mapDaySections = planDays;
@@ -352,6 +358,14 @@ export default function App() {
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const updateViewport = () => setIsMobile(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
+  }, []);
 
   function saveSession(
     sid: string,
@@ -507,6 +521,38 @@ export default function App() {
   function handleSelectStop(dayIndex: number, stopIndex: number) {
     setSelectedMapDayIndex(dayIndex);
     setSelectedStopIndex(stopIndex);
+  }
+
+  if (isMobile) {
+    return (
+      <MobileLayout
+        activeMapDay={activeMapDay}
+        activeMapStops={activeMapStops}
+        activeTab={mobileTab}
+        error={error}
+        exporting={exporting}
+        loading={loading}
+        mapDaySections={mapDaySections}
+        message={message}
+        messages={messages}
+        onExport={handleExport}
+        onMessageChange={setMessage}
+        onNewChat={handleNewChat}
+        onSelectDay={(index) => {
+          setSelectedMapDayIndex(index);
+          setSelectedStopIndex(0);
+        }}
+        onSelectStop={handleSelectStop}
+        onSubmit={handleSubmit}
+        onTabChange={setMobileTab}
+        result={result}
+        selectedDayIndex={selectedMapDayIndex}
+        selectedStop={selectedStop}
+        selectedStopIndex={selectedStopIndex}
+        totalWalkMin={totalWalkMin}
+        uniqueSources={uniqueSources}
+      />
+    );
   }
 
   return (
@@ -1071,6 +1117,324 @@ export default function App() {
           <TransitPanel days={mapDaySections} />
         )}
       </aside>
+    </div>
+  );
+}
+
+type MobileLayoutProps = {
+  activeMapDay: DaySection | undefined;
+  activeMapStops: Place[];
+  activeTab: MobileTab;
+  error: string | null;
+  exporting: boolean;
+  loading: boolean;
+  mapDaySections: DaySection[];
+  message: string;
+  messages: ChatMessage[];
+  onExport: () => void;
+  onMessageChange: (message: string) => void;
+  onNewChat: () => void;
+  onSelectDay: (index: number) => void;
+  onSelectStop: (dayIndex: number, stopIndex: number) => void;
+  onSubmit: (event: FormEvent) => void;
+  onTabChange: (tab: MobileTab) => void;
+  result: ChatResponse | null;
+  selectedDayIndex: number;
+  selectedStop: Place | null;
+  selectedStopIndex: number;
+  totalWalkMin: number;
+  uniqueSources: string[];
+};
+
+function MobileLayout({
+  activeMapDay,
+  activeMapStops,
+  activeTab,
+  error,
+  exporting,
+  loading,
+  mapDaySections,
+  message,
+  messages,
+  onExport,
+  onMessageChange,
+  onNewChat,
+  onSelectDay,
+  onSelectStop,
+  onSubmit,
+  onTabChange,
+  result,
+  selectedDayIndex,
+  selectedStop,
+  selectedStopIndex,
+  totalWalkMin,
+  uniqueSources,
+}: MobileLayoutProps) {
+  const segments = buildSegments(activeMapStops);
+  const tabs: MobileTab[] = ["Plan", "Itinerary", "Map", "Route", "Transit"];
+
+  return (
+    <div className={`mobile-app mobile-tab-${activeTab.toLowerCase()}`}>
+      <header className="mobile-topbar">
+        <div className="brand">
+          <span className="brand-mark" />
+          <div>
+            <div className="brand-name">TravelBuddy</div>
+            <div className="brand-sub">France</div>
+          </div>
+        </div>
+        <button className="icon-btn" type="button" onClick={onNewChat} disabled={loading}>
+          <Plus size={13} />
+          New trip
+        </button>
+      </header>
+
+      <section className="mobile-map-stage" aria-label="Travel route map">
+        <GoogleMap
+          stops={activeMapStops}
+          selectedIndex={selectedStopIndex}
+          onSelectStop={(index) => onSelectStop(selectedDayIndex, index)}
+          startIndex={0}
+        />
+        {mapDaySections.length > 1 && (
+          <div className="mobile-day-tabs" aria-label="Itinerary days">
+            {mapDaySections.map((day, index) => (
+              <button
+                className={selectedDayIndex === index ? "active" : ""}
+                key={`${day.day}-${day.title}`}
+                type="button"
+                onClick={() => onSelectDay(index)}
+              >
+                Day {day.day}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <main className="mobile-sheet">
+        <div className="mobile-sheet-handle" />
+        <div className="mobile-sheet-scroll scroll">
+          {activeTab === "Plan" && (
+            <section className="mobile-plan">
+              <div className="mobile-section-heading">
+                <div>
+                  <span className="eyebrow">Plan</span>
+                  <h1>Plan your France trip</h1>
+                </div>
+              </div>
+              <div className="mobile-chat-feed">
+                {messages.map((chatMessage, index) => (
+                  <div
+                    className={`msg ${chatMessage.role === "user" ? "user" : "ai"}`}
+                    key={`${chatMessage.role}-${index}`}
+                  >
+                    <div className="msg-role">
+                      <span className={`avatar ${chatMessage.role === "user" ? "user" : "ai"}`}>
+                        {chatMessage.role === "user" ? "Y" : "A"}
+                      </span>
+                      <span className="msg-name">
+                        {chatMessage.role === "user" ? "You" : "Arthur"}
+                      </span>
+                    </div>
+                    <div className="bubble">{chatMessage.content}</div>
+                  </div>
+                ))}
+                {loading && (
+                  <div className="msg ai">
+                    <div className="msg-role">
+                      <span className="avatar ai">A</span>
+                      <span className="msg-name">Arthur</span>
+                    </div>
+                    <div className="bubble mobile-loading">
+                      <LoaderCircle size={14} className="spin" />
+                      Planning your trip
+                    </div>
+                  </div>
+                )}
+              </div>
+              <form className="mobile-composer" onSubmit={onSubmit}>
+                <textarea
+                  value={message}
+                  onChange={(event) => onMessageChange(event.target.value)}
+                  placeholder='Refine your plan — e.g. "more street food stops"'
+                  rows={4}
+                />
+                <button className="send-btn" type="submit" disabled={loading}>
+                  {loading ? <LoaderCircle size={14} className="spin" /> : "Generate plan"}
+                  <ArrowRight size={14} />
+                </button>
+              </form>
+              {error && <div className="error-note mobile-error">{error}</div>}
+            </section>
+          )}
+
+          {activeTab === "Itinerary" && (
+            <section className="mobile-itinerary">
+              {result ? (
+                <>
+                  <div className="mobile-section-heading mobile-itinerary-heading">
+                    <div>
+                      <span className="eyebrow">Votre itinéraire</span>
+                      <h1>{result.extracted_intent.destination}</h1>
+                      <div className="loc-sub">
+                        France · {result.extracted_intent.duration_days} days
+                      </div>
+                    </div>
+                    <button
+                      className="export-btn mobile-export"
+                      type="button"
+                      onClick={onExport}
+                      disabled={exporting}
+                    >
+                      {exporting ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}
+                      PDF
+                    </button>
+                  </div>
+                  <p className="summary-lead">{result.itinerary.summary}</p>
+                  <div className="mobile-meta-strip">
+                    <div><strong>{result.itinerary.stops.length}</strong><span>Stops</span></div>
+                    <div><strong>{totalWalkMin}</strong><span>Walk min</span></div>
+                    <div><strong>{uniqueSources.length}</strong><span>Sources</span></div>
+                    <div><strong>{result.extracted_intent.duration_days}</strong><span>Days</span></div>
+                  </div>
+                  <div className="tagrow mobile-tagrow">
+                    {result.itinerary.themes.map((theme) => (
+                      <span className="tag" key={theme}><span className="tdot" />{theme}</span>
+                    ))}
+                    {result.extracted_intent.avoid.map((item) => (
+                      <span className="tag neg" key={item}><span className="tdot" />Avoid {item}</span>
+                    ))}
+                  </div>
+                  <div className="mobile-days">
+                    {mapDaySections.map((day, dayIndex) => {
+                      const daySegments = buildSegments(day.stops);
+                      return (
+                        <section key={`${day.day}-${day.title}`}>
+                          <div className="day-head">
+                            <span className="day-no">Jour {day.day}</span>
+                            <span className="day-title">{day.title || `Day ${day.day}`}</span>
+                            <span className="day-sub">{day.stops.length} stops</span>
+                          </div>
+                          <div className="stop-list">
+                            {day.stops.map((stop, stopIndex) => {
+                              const segment = daySegments[stopIndex];
+                              const active =
+                                dayIndex === selectedDayIndex && stopIndex === selectedStopIndex;
+                              return (
+                                <button
+                                  className={`stop mobile-stop${active ? " active" : ""}`}
+                                  key={`${day.day}-${stop.name}-${stopIndex}`}
+                                  type="button"
+                                  onClick={() => onSelectStop(dayIndex, stopIndex)}
+                                >
+                                  <span className="stop-num">{stopIndex + 1}</span>
+                                  <PlacePhoto photoName={stop.photo_name} alt={stop.name} className="stop-img" />
+                                  <span className="stop-body">
+                                    <span className="cat-chip">{stop.category || "Place"}</span>
+                                    <span className="stop-name">{stop.name}</span>
+                                    <span className="stop-meta">
+                                      {stop.open_status_label || stop.neighborhood || stop.city}
+                                    </span>
+                                  </span>
+                                  <span className="stop-right">
+                                    {segment && (
+                                      <span className="walkpill">
+                                        {segment.mode === "Walk" ? <Footprints size={11} /> : <Bus size={11} />}
+                                        {segment.minutes} min
+                                      </span>
+                                    )}
+                                    <ChevronRight size={15} />
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="mobile-empty">
+                  <MapPin size={28} />
+                  <h2>Your itinerary appears here</h2>
+                  <p>Start a conversation to generate a local-first France plan.</p>
+                  <button className="send-btn" type="button" onClick={() => onTabChange("Plan")}>
+                    Open Plan
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === "Map" && (
+            <section className="mobile-map-content">
+              <div className="mobile-section-heading">
+                <div>
+                  <span className="eyebrow">Map</span>
+                  <h1>{activeMapDay?.title || "Route map"}</h1>
+                </div>
+              </div>
+              {selectedStop ? (
+                <div className="mobile-place-detail">
+                  <PlacePhoto
+                    photoName={selectedStop.photo_name}
+                    alt={selectedStop.name}
+                    className="detail-img"
+                  />
+                  <span className="cat-chip">{selectedStop.category || "Place"}</span>
+                  <h2>{selectedStop.name}</h2>
+                  <p>{selectedStop.neighborhood || selectedStop.city}</p>
+                  {(selectedStop.local_tip || selectedStop.reason) && (
+                    <blockquote>{selectedStop.local_tip || selectedStop.reason}</blockquote>
+                  )}
+                  <div className="detail-foot">
+                    {segments[selectedStopIndex] ? (
+                      <span className="walkpill">
+                        {segments[selectedStopIndex].mode === "Walk" ? <Footprints size={11} /> : <Bus size={11} />}
+                        {segments[selectedStopIndex].minutes} min to next
+                      </span>
+                    ) : <span className="eyebrow">Last stop</span>}
+                    <a
+                      className="openbtn"
+                      href={selectedStop.source_url || googleMapsUrl(selectedStop)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={12} />
+                      Open source
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="mobile-empty compact">
+                  <MapPin size={26} />
+                  <h2>Select a stop to see details</h2>
+                  <p>Generate a plan from the Plan tab to draw your route.</p>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === "Route" && <RoutePanel days={mapDaySections} />}
+          {activeTab === "Transit" && <TransitPanel days={mapDaySections} />}
+        </div>
+      </main>
+
+      <nav className="mobile-bottom-nav" aria-label="TravelBuddy sections">
+        {tabs.map((tab) => (
+          <button
+            className={activeTab === tab ? "active" : ""}
+            key={tab}
+            type="button"
+            onClick={() => onTabChange(tab)}
+          >
+            {tab}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
