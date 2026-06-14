@@ -1197,6 +1197,7 @@ function MobileLayout({
     moved: boolean;
   } | null>(null);
   const ignoreSheetClick = useRef(false);
+  const hasSubmittedPrompt = messages.some((chatMessage) => chatMessage.role === "user");
 
   useEffect(() => {
     const updateSheetPosition = () => {
@@ -1400,7 +1401,13 @@ function MobileLayout({
                   </div>
                 )}
               </div>
-              <form className="mobile-composer" onSubmit={onSubmit}>
+              <form
+                className={`mobile-composer${hasSubmittedPrompt ? " compact" : ""}`}
+                onSubmit={(event) => {
+                  event.currentTarget.querySelector("textarea")?.blur();
+                  onSubmit(event);
+                }}
+              >
                 <textarea
                   value={message}
                   onChange={(event) => onMessageChange(event.target.value)}
