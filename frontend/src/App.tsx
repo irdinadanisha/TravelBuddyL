@@ -3,12 +3,14 @@ import {
   ArrowRight,
   Bus,
   ChevronRight,
+  ClipboardList,
   Clock,
   Download,
   ExternalLink,
   Footprints,
   History,
   LoaderCircle,
+  Map,
   MapPin,
   Plus,
   Sparkles,
@@ -60,6 +62,14 @@ type SavedSession = {
 };
 
 type MobileTab = "Plan" | "Itinerary" | "Map" | "Route" | "Transit";
+type SheetSnap = "expanded" | "half" | "collapsed";
+
+function mobileSheetPositions(viewportHeight: number) {
+  const expanded = Math.max(82, Math.round(viewportHeight * 0.1));
+  const half = Math.max(expanded + 150, Math.round(viewportHeight * 0.35));
+  const collapsed = Math.max(half + 130, viewportHeight - 132);
+  return { expanded, half, collapsed };
+}
 
 function haversineKm(from: Place, to: Place) {
   const R = 6371;
@@ -1172,9 +1182,125 @@ function MobileLayout({
 }: MobileLayoutProps) {
   const segments = buildSegments(activeMapStops);
   const tabs: MobileTab[] = ["Plan", "Itinerary", "Map", "Route", "Transit"];
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("half");
+  const [sheetTop, setSheetTop] = useState(() =>
+    mobileSheetPositions(window.innerHeight).half
+  );
+  const [sheetDragging, setSheetDragging] = useState(false);
+  const dragState = useRef<{
+    pointerId: number;
+    startY: number;
+    startTop: number;
+    lastY: number;
+    lastTime: number;
+    velocity: number;
+    moved: boolean;
+  } | null>(null);
+  const ignoreSheetClick = useRef(false);
+
+  useEffect(() => {
+    const updateSheetPosition = () => {
+      const positions = mobileSheetPositions(window.innerHeight);
+      setSheetTop(positions[sheetSnap]);
+    };
+    updateSheetPosition();
+    window.addEventListener("resize", updateSheetPosition);
+    return () => window.removeEventListener("resize", updateSheetPosition);
+  }, [sheetSnap]);
+
+  function snapSheet(nextSnap: SheetSnap) {
+    setSheetSnap(nextSnap);
+    setSheetTop(mobileSheetPositions(window.innerHeight)[nextSnap]);
+  }
+
+  function handleSheetPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragState.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startTop: sheetTop,
+      lastY: event.clientY,
+      lastTime: performance.now(),
+      velocity: 0,
+      moved: false,
+    };
+    setSheetDragging(true);
+  }
+
+  function handleSheetPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragState.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const positions = mobileSheetPositions(window.innerHeight);
+    const now = performance.now();
+    const elapsed = Math.max(1, now - drag.lastTime);
+    drag.velocity = (event.clientY - drag.lastY) / elapsed;
+    drag.moved = drag.moved || Math.abs(event.clientY - drag.startY) > 4;
+    drag.lastY = event.clientY;
+    drag.lastTime = now;
+
+    const nextTop = Math.min(
+      positions.collapsed,
+      Math.max(positions.expanded, drag.startTop + event.clientY - drag.startY)
+    );
+    setSheetTop(nextTop);
+  }
+
+  function handleSheetPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragState.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    if (!drag.moved) {
+      dragState.current = null;
+      setSheetDragging(false);
+      return;
+    }
+
+    const positions = mobileSheetPositions(window.innerHeight);
+    const ordered: Array<[SheetSnap, number]> = [
+      ["expanded", positions.expanded],
+      ["half", positions.half],
+      ["collapsed", positions.collapsed],
+    ];
+    let nextSnap = ordered.reduce((closest, candidate) =>
+      Math.abs(candidate[1] - sheetTop) < Math.abs(closest[1] - sheetTop)
+        ? candidate
+        : closest
+    )[0];
+
+    if (Math.abs(drag.velocity) > 0.45) {
+      const currentIndex = ordered.findIndex(([snap]) => snap === sheetSnap);
+      const direction = drag.velocity > 0 ? 1 : -1;
+      nextSnap = ordered[
+        Math.min(ordered.length - 1, Math.max(0, currentIndex + direction))
+      ][0];
+    }
+
+    ignoreSheetClick.current = true;
+    dragState.current = null;
+    setSheetDragging(false);
+    snapSheet(nextSnap);
+  }
+
+  function cycleSheetSnap() {
+    if (ignoreSheetClick.current) {
+      ignoreSheetClick.current = false;
+      return;
+    }
+    const nextSnap: Record<SheetSnap, SheetSnap> = {
+      collapsed: "half",
+      half: "expanded",
+      expanded: "collapsed",
+    };
+    snapSheet(nextSnap[sheetSnap]);
+  }
 
   return (
-    <div className={`mobile-app mobile-tab-${activeTab.toLowerCase()}`}>
+    <div
+      className={`mobile-app mobile-tab-${activeTab.toLowerCase()}`}
+      style={{ "--mobile-sheet-top": `${sheetTop}px` } as React.CSSProperties}
+    >
       <header className="mobile-topbar">
         <div className="brand">
           <span className="brand-mark" />
@@ -1183,10 +1309,6 @@ function MobileLayout({
             <div className="brand-sub">France</div>
           </div>
         </div>
-        <button className="icon-btn" type="button" onClick={onNewChat} disabled={loading}>
-          <Plus size={13} />
-          New trip
-        </button>
       </header>
 
       <section className="mobile-map-stage" aria-label="Travel route map">
@@ -1212,8 +1334,33 @@ function MobileLayout({
         )}
       </section>
 
-      <main className="mobile-sheet">
-        <div className="mobile-sheet-handle" />
+      <main
+        className={`mobile-sheet mobile-sheet-${sheetSnap}${sheetDragging ? " dragging" : ""}`}
+        style={{ top: `${sheetTop}px` }}
+      >
+        <div
+          className="mobile-sheet-drag-rail"
+          onClick={cycleSheetSnap}
+          onLostPointerCapture={handleSheetPointerEnd}
+          onPointerCancel={handleSheetPointerEnd}
+          onPointerDown={handleSheetPointerDown}
+          onPointerMove={handleSheetPointerMove}
+          onPointerUp={handleSheetPointerEnd}
+          role="button"
+          tabIndex={0}
+          aria-label={`Bottom sheet ${sheetSnap}. Drag or tap to resize.`}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              cycleSheetSnap();
+            }
+          }}
+        >
+          <div className="mobile-sheet-handle" />
+          <span className="mobile-sheet-peek">
+            {activeTab}
+          </span>
+        </div>
         <div className="mobile-sheet-scroll scroll">
           {activeTab === "Plan" && (
             <section className="mobile-plan">
@@ -1431,9 +1578,29 @@ function MobileLayout({
             type="button"
             onClick={() => onTabChange(tab)}
           >
-            {tab}
+            <span className="mobile-nav-icon" aria-hidden="true">
+              {tab === "Plan" && <MapPin />}
+              {tab === "Itinerary" && <ClipboardList />}
+              {tab === "Map" && <Map />}
+              {tab === "Route" && <Navigation />}
+              {tab === "Transit" && <Bus />}
+            </span>
+            <span>{tab}</span>
           </button>
         ))}
+        <button
+          type="button"
+          className="mobile-new-trip"
+          disabled={loading}
+          onClick={() => {
+            onNewChat();
+            onTabChange("Plan");
+            snapSheet("half");
+          }}
+        >
+          <span className="mobile-nav-icon" aria-hidden="true"><Plus /></span>
+          <span>New Trip</span>
+        </button>
       </nav>
     </div>
   );
